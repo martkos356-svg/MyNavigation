@@ -17,7 +17,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Unpack Android project
+      - name: Unpack project
         run: unzip -q MyNavigation-upload.zip -d unpacked
 
       - name: Set up Java
@@ -31,8 +31,11 @@ jobs:
         with:
           packages: 'platform-tools'
 
-      - name: Install Android SDK
-        run: sdkmanager --install "platforms;android-35" "build-tools;35.0.0"
+      - name: Install Android SDK 36
+        run: sdkmanager --install "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Update compileSdk
+        run: sed -i 's/compileSdk = 35/compileSdk = 36/' unpacked/MyNavigation/app/build.gradle.kts
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
