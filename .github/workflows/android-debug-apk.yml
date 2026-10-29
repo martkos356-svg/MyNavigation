@@ -33,6 +33,7 @@ jobs:
 
       - name: Install Android SDK 36
         run: sdkmanager --install "platforms;android-36" "build-tools;36.0.0"
+
       - name: Configure Android compile targets
         run: |
           python3 - <<'PY'
@@ -41,7 +42,7 @@ jobs:
           s = p.read_text()
           s = s.replace("compileSdk = 35", "compileSdk = 36")
           marker = "    defaultConfig {"
-          config = '''    compileOptions {
+          config = """    compileOptions {
               sourceCompatibility = JavaVersion.VERSION_17
               targetCompatibility = JavaVersion.VERSION_17
           }
@@ -50,8 +51,25 @@ jobs:
               jvmTarget = "17"
           }
 
-          '''
+          """
           if "sourceCompatibility = JavaVersion.VERSION_17" not in s:
               s = s.replace(marker, config + marker, 1)
           p.write_text(s)
           PY
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+
+      - name: Build APK
+        working-directory: unpacked/MyNavigation
+        run: gradle --no-daemon assembleDebug
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: MyNavigation-APK
+          path: unpacked/MyNavigation/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14
