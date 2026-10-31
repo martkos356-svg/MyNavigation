@@ -1,24 +1,29 @@
+
 name: Build MyNavigation APK
 
 on:
-  workflow_dispatch:
   push:
     paths:
       - 'MyNavigation-upload.zip'
       - '.github/workflows/android-debug-apk.yml'
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
   build:
+    name: Build APK
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
       - name: Unpack project
-        run: unzip -q MyNavigation-upload.zip -d unpacked
+        run: |
+          mkdir -p unpacked
+          unzip -q MyNavigation-upload.zip -d unpacked
+          test -f unpacked/MyNavigation/app/build.gradle.kts
 
       - name: Set up Java
         uses: actions/setup-java@v4
@@ -32,47 +37,62 @@ jobs:
           packages: 'platform-tools'
 
       - name: Install Android SDK 36
-        run: sdkmanager --install "platforms;android-36" "build-tools;36.0.0"
+        run: |
+          sdkmanager --install "platforms;android-36" "build-tools;36.0.0"
 
-      - name: Configure Android compile targets
+      - name: Fix Kotlin and Java targets
         run: |
           python3 - <<'PY'
           from pathlib import Path
+          import re
 
           root = Path("unpacked/MyNavigation")
-
-          p = root / "build.gradle.kts"
-          s = p.read_text()
-          s = s.replace(
-              'id("org.jetbrains.kotlin.android") version "2.1.20"',
-              'id("org.jetbrains.kotlin.android") version "2.3.0"'
-          )
-          p.write_text(s)
-
           p = root / "app/build.gradle.kts"
-          s = p.read_text()
-          s = s.replace("compileSdk = 35", "compileSdk = 36")
+          s = p.read_text(encoding="utf-8")
 
-          config = """    compileOptions {
+          compile_block = """    compileOptions {
               sourceCompatibility = JavaVersion.VERSION_17
               targetCompatibility = JavaVersion.VERSION_17
-          }
+          }"""
+
+          if re.search(r'compileOptions\s*\{', s):
+              s = re.sub(
+                  r'compileOptions\s*\{[^{}]*\}',
+                  compile_block,
+                  s,
+                  count=1
+              )
+          else:
+              s = re.sub(
+                  r'(android\s*\{)',
+                  r'\1\n' + compile_block,
+                  s,
+                  count=1
+              )
+
+          s = re.sub(
+              r'\n\s*kotlinOptions\s*\{[^{}]*\}',
+              '',
+              s,
+              count=1
+          )
+
+          if not re.search(r'(?m)^\s*kotlin\s*\{', s):
+              s += """
 
           kotlin {
-    compilerOptions {
-        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
-    }
-}
-
+              compilerOptions {
+                  jvmTarget.set(
+                      org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
+                  )
+              }
+          }
           """
 
-          marker = "    defaultConfig {"
-          if "sourceCompatibility = JavaVersion.VERSION_17" not in s:
-              s = s.replace(marker, config + marker, 1)
-
-          p.write_text(s)
+          p.write_text(s, encoding="utf-8")
+          print("Java 17 and Kotlin 17 configured")
           PY
-          
+
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
@@ -88,5 +108,4 @@ jobs:
           name: MyNavigation-APK
           path: unpacked/MyNavigation/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
-          retention-days: 7
-
+          retention-days: 14
