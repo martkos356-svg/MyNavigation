@@ -70,3 +70,21 @@ jobs:
 
           p.write_text(s)
           PY
+          
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+
+      - name: Build APK
+        working-directory: unpacked/MyNavigation
+        run: gradle --no-daemon assembleDebug
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: MyNavigation-APK
+          path: unpacked/MyNavigation/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 7
+
