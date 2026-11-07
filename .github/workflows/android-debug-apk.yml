@@ -39,11 +39,13 @@ jobs:
           java-version: '17'
 
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
+        with:
+          packages: 'platform-tools'
 
       - name: Install Android SDK 36
         run: |
-          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+          sdkmanager --install "platforms;android-36" "build-tools;36.0.0"
 
       - name: Set compileSdk to 36
         run: |
@@ -59,6 +61,7 @@ jobs:
               raise SystemExit("app/build.gradle.kts not found")
 
           s = p.read_text()
+
           s, count = re.subn(
               r'(?m)^(\s*compileSdk\s*=\s*)\d+',
               r'\g<1>36',
@@ -67,10 +70,10 @@ jobs:
           )
 
           if count == 0:
-              raise SystemExit("Could not find compileSdk = number in app/build.gradle.kts")
+              raise SystemExit("compileSdk declaration not found")
 
           p.write_text(s)
-          print("compileSdk successfully set to 36")
+          print("compileSdk set to 36")
           PY
 
       - name: Set up Gradle
