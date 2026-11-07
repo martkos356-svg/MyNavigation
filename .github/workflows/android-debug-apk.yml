@@ -1,20 +1,19 @@
-
 name: Build MyNavigation APK
 
 on:
+  workflow_dispatch:
   push:
     paths:
       - 'MyNavigation-upload.zip'
       - '.github/workflows/android-debug-apk.yml'
-  workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
   build:
-    name: Build APK
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -23,7 +22,15 @@ jobs:
         run: |
           mkdir -p unpacked
           unzip -q MyNavigation-upload.zip -d unpacked
-          test -f unpacked/MyNavigation/app/build.gradle.kts
+
+          PROJECT_DIR="$(find unpacked -type f \( -name settings.gradle.kts -o -name settings.gradle \) -print -quit | xargs -r dirname)"
+
+          if [ -z "$PROJECT_DIR" ]; then
+            echo "Gradle project not found in ZIP"
+            exit 1
+          fi
+
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
 
       - name: Set up Java
         uses: actions/setup-java@v4
@@ -32,65 +39,38 @@ jobs:
           java-version: '17'
 
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v4
-        with:
-          packages: 'platform-tools'
+        uses: android-actions/setup-android@v3
 
       - name: Install Android SDK 36
         run: |
-          sdkmanager --install "platforms;android-36" "build-tools;36.0.0"
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
 
-      - name: Fix Kotlin and Java targets
+      - name: Set compileSdk to 36
         run: |
           python3 - <<'PY'
-          from pathlib import Path
+          import os
           import re
+          from pathlib import Path
 
-          root = Path("unpacked/MyNavigation")
-          p = root / "app/build.gradle.kts"
-          s = p.read_text(encoding="utf-8")
+          root = Path(os.environ["PROJECT_DIR"])
+          p = root / "app" / "build.gradle.kts"
 
-          compile_block = """    compileOptions {
-              sourceCompatibility = JavaVersion.VERSION_17
-              targetCompatibility = JavaVersion.VERSION_17
-          }"""
+          if not p.exists():
+              raise SystemExit("app/build.gradle.kts not found")
 
-          if re.search(r'compileOptions\s*\{', s):
-              s = re.sub(
-                  r'compileOptions\s*\{[^{}]*\}',
-                  compile_block,
-                  s,
-                  count=1
-              )
-          else:
-              s = re.sub(
-                  r'(android\s*\{)',
-                  r'\1\n' + compile_block,
-                  s,
-                  count=1
-              )
-
-          s = re.sub(
-              r'\n\s*kotlinOptions\s*\{[^{}]*\}',
-              '',
+          s = p.read_text()
+          s, count = re.subn(
+              r'(?m)^(\s*compileSdk\s*=\s*)\d+',
+              r'\g<1>36',
               s,
               count=1
           )
 
-          if not re.search(r'(?m)^\s*kotlin\s*\{', s):
-              s += """
+          if count == 0:
+              raise SystemExit("Could not find compileSdk = number in app/build.gradle.kts")
 
-          kotlin {
-              compilerOptions {
-                  jvmTarget.set(
-                      org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
-                  )
-              }
-          }
-          """
-
-          p.write_text(s, encoding="utf-8")
-          print("Java 17 and Kotlin 17 configured")
+          p.write_text(s)
+          print("compileSdk successfully set to 36")
           PY
 
       - name: Set up Gradle
@@ -99,13 +79,19 @@ jobs:
           gradle-version: '8.11.1'
 
       - name: Build APK
-        working-directory: unpacked/MyNavigation
-        run: gradle --no-daemon assembleDebug
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          if [ -f ./gradlew ]; then
+            chmod +x ./gradlew
+            ./gradlew --no-daemon assembleDebug
+          else
+            gradle --no-daemon assembleDebug
+          fi
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: MyNavigation-APK
-          path: unpacked/MyNavigation/app/build/outputs/apk/debug/*.apk
+          name: MyNavigation-debug-APK
+          path: ${{ env.PROJECT_DIR }}/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 7
